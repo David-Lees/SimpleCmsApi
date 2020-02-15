@@ -106,7 +106,7 @@ namespace SimpleCmsApi
             var height = image.Height;
             string name = string.Empty;
             if (res != null)
-            {
+            {                
                 double ratio = (double)res / image.Height;
                 width = (int)(image.Width * ratio);
                 height = (int)(image.Height * ratio);
@@ -123,18 +123,12 @@ namespace SimpleCmsApi
                     await blob.UploadFromStreamAsync(stream);
                 }
                 else
-                {
-                    image.Mutate(x => x.Resize(new ResizeOptions
-                    {
-                        Size = new SixLabors.Primitives.Size(width, height),
-                        Mode = ResizeMode.BoxPad,
-                        Position = AnchorPositionMode.Center
-                    }));
+                {                   
                     name = ("files/" + id.ToString() + "/" + resolution + "-" + id.ToString() + ".png").ToLowerInvariant();
                     var blob = container.GetBlockBlobReference(name);
-                    blob.Properties.ContentType = "image/png";
+                    blob.Properties.ContentType = "image/jpeg";
                     using var stream = new MemoryStream();
-                    image.SaveAsPng(stream);
+                    image.SaveAsJpeg(stream, new SixLabors.ImageSharp.Formats.Jpeg.JpegEncoder { Quality = 90 });
                     stream.Position = 0;
                     await blob.UploadFromStreamAsync(stream).ConfigureAwait(true);
                 }
@@ -151,12 +145,9 @@ namespace SimpleCmsApi
         {
             return new Dictionary<string, int?>
             {
-                { "preview_xxs", 375},
-                { "preview_xs",  768},
-                { "preview_s",  1080},
-                { "preview_m",  1600},
-                { "preview_l",  2160},
-                { "preview_xl",  2880},
+                { "preview_small", 375},
+                { "preview_sd",  768},
+                { "preview_hd",  1080},
                 { "raw",  null}
             };
         }
