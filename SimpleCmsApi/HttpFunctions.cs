@@ -1,19 +1,19 @@
-using System;
-using System.IO;
-using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
+using Microsoft.Extensions.Logging;
 using Microsoft.WindowsAzure.Storage;
 using Microsoft.WindowsAzure.Storage.Blob;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Logging;
-using System.Text.Json;
 using SimpleCmsApi.Models;
-using System.Collections.Generic;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Processing;
+using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
+using System.Threading.Tasks;
 
 namespace SimpleCmsApi
 {
@@ -26,10 +26,22 @@ namespace SimpleCmsApi
            [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = null)] HttpRequest req,
            ILogger log)
         {
+            var gallery = await ProcessMediaAsync(req, log);
+            return new OkObjectResult(gallery);
+        }
+
+        private static Task<Gallery> ProcessMediaAsync(HttpRequest req, ILogger log)
+        {
             if (req == null) throw new ArgumentNullException(nameof(req));
-            log.LogInformation("C# HTTP process media trigger function processed a request.");
+            if (log == null) throw new ArgumentNullException(nameof(log));
             string name = req.Query["filename"];
-            if (string.IsNullOrWhiteSpace(name)) throw new NullReferenceException();
+            if (string.IsNullOrWhiteSpace(name)) throw new ArgumentNullException(nameof(req));
+            return ProcessMediaInternalAsync(log, name);
+        }
+
+        private static async Task<Gallery> ProcessMediaInternalAsync(ILogger log, string name)
+        {
+            log.LogInformation("C# HTTP process media trigger function processed a request.");
 
             var storageAccount = CloudStorageAccount.Parse(Environment.GetEnvironmentVariable("AzureWebJobsStorage"));
             var blobClient = storageAccount.CreateCloudBlobClient();
@@ -47,55 +59,57 @@ namespace SimpleCmsApi
 
             // load images.json
             var blob = container.GetBlockBlobReference(imagesJsonFilename);
-            if (blob != null || (await blob.ExistsAsync()))
+            if (blob != null)
             {
-                var body = await blob.DownloadTextAsync();
-                if (!string.IsNullOrWhiteSpace(body))
+                if (await blob.ExistsAsync())
                 {
-                    var imageList = JsonSerializer.Deserialize<List<GalleryImage>>(body, options);
-                    gallery.Images.AddRange(imageList);
+                    var body = await blob.DownloadTextAsync();
+                    if (!string.IsNullOrWhiteSpace(body))
+                    {
+                        var imageList = JsonSerializer.Deserialize<List<GalleryImage>>(body, options);
+                        gallery.Images.AddRange(imageList);
+                    }
                 }
+
+                // load file
+                var f = srcContainer.GetBlockBlobReference(name);
+                using MemoryStream stream = new MemoryStream();
+                await f.DownloadToStreamAsync(stream).ConfigureAwait(true);
+                stream.Position = 0;
+                using var src = Image.Load(stream);
+
+                var id = Guid.NewGuid();
+                var hueCalc = new DominantHueColorCalculator(0.5f, 0.5f, 60);
+                var galleryImage = new GalleryImage()
+                {
+                    Id = id,
+                    DominantColour = "#" + hueCalc.CalculateDominantColor(src).ToHex(),
+                    Files = new Dictionary<string, GalleryImageDetails>()
+                };
+
+                var resolutions = GetResolutions();
+                foreach (var key in resolutions.Keys)
+                {
+                    galleryImage.Files[key] = await CreatePreviewImageAsync(
+                        src.Clone(x => x.AutoOrient()),
+                        key,
+                        container,
+                        id,
+                        resolutions
+                    );
+                }
+
+                gallery.Images.Add(galleryImage);
+
+                // save images.json
+                var outputBody = JsonSerializer.Serialize(gallery.Images, options);
+                await blob.UploadTextAsync(outputBody);
+                log.LogInformation("Updated images.json");
+
+                // delete original file
+                await f.DeleteAsync().ConfigureAwait(true);
             }
-
-            // load file
-            var f = srcContainer.GetBlockBlobReference(name);
-            using MemoryStream stream = new MemoryStream();
-            await f.DownloadToStreamAsync(stream).ConfigureAwait(true);
-            stream.Position = 0;
-            using var src = Image.Load(stream);
-
-            var id = Guid.NewGuid();
-            var hueCalc = new DominantHueColorCalculator(0.5f, 0.5f, 60);
-            var galleryImage = new GalleryImage()
-            {
-                Id = id,
-                DominantColour = "#" + hueCalc.CalculateDominantColor(src).ToHex(),
-                Files = new Dictionary<string, GalleryImageDetails>()
-            };
-
-            var resolutions = GetResolutions();
-            foreach (var key in resolutions.Keys)
-            {
-                galleryImage.Files[key] = await CreatePreviewImageAsync(
-                    src.Clone(x => x.AutoOrient()),
-                    key,
-                    container,
-                    id,
-                    resolutions
-                );
-            }
-
-            gallery.Images.Add(galleryImage);
-
-            // save images.json
-            var outputBody = JsonSerializer.Serialize(gallery.Images, options);
-            await blob.UploadTextAsync(outputBody);
-            log.LogInformation("Updated images.json");
-
-            // delete original file
-            await f.DeleteAsync().ConfigureAwait(true);
-
-            return new OkObjectResult(gallery);
+            return gallery;
         }
 
         private static async Task<GalleryImageDetails> CreatePreviewImageAsync(
@@ -106,7 +120,7 @@ namespace SimpleCmsApi
             var height = image.Height;
             string name = string.Empty;
             if (res != null)
-            {                
+            {
                 double ratio = (double)res / image.Height;
                 width = (int)(image.Width * ratio);
                 height = (int)(image.Height * ratio);
@@ -123,7 +137,7 @@ namespace SimpleCmsApi
                     await blob.UploadFromStreamAsync(stream);
                 }
                 else
-                {                   
+                {
                     name = ("files/" + id.ToString() + "/" + resolution + "-" + id.ToString() + ".png").ToLowerInvariant();
                     var blob = container.GetBlockBlobReference(name);
                     blob.Properties.ContentType = "image/jpeg";
@@ -157,7 +171,19 @@ namespace SimpleCmsApi
             [HttpTrigger(AuthorizationLevel.Anonymous, Route = null)] HttpRequest req,
             ILogger log)
         {
+            await UpdateSiteAsync(req, log);
+            return new OkResult();
+        }
+
+        private static Task UpdateSiteAsync(HttpRequest req, ILogger log)
+        {
             if (req == null) throw new ArgumentNullException(nameof(req));
+            if (log == null) throw new ArgumentNullException(nameof(log));
+            return UpdateSiteInternalAsync(req, log);
+        }
+
+        private static async Task UpdateSiteInternalAsync(HttpRequest req, ILogger log)
+        {
             log.LogInformation("C# HTTP update site trigger function processed a request.");
 
             using var sr = new StreamReader(req.Body);
@@ -168,7 +194,6 @@ namespace SimpleCmsApi
             var container = blobClient.GetContainerReference("images");
             var blob = container.GetBlockBlobReference("site.json");
             await blob.UploadTextAsync(requestBody).ConfigureAwait(true);
-            return new OkResult();
         }
 
         [FunctionName("GetSasToken")]
@@ -203,11 +228,22 @@ namespace SimpleCmsApi
             string identifier,
             ILogger log)
         {
+            var gallery = await DeleteMediaAsync(req, identifier, log);
+            return new OkObjectResult(gallery);
+        }
+
+        private static Task<Gallery> DeleteMediaAsync(HttpRequest req,
+            string identifier,
+            ILogger log)
+        {
             if (req == null) throw new ArgumentNullException(nameof(req));
+            if (!Guid.TryParse(identifier, out Guid id)) throw new ArgumentNullException(nameof(identifier));
+            return DeleteMediaInternalAsync(id, log);
+        }
+
+        private static async Task<Gallery> DeleteMediaInternalAsync(Guid id, ILogger log)
+        {
             log.LogInformation("C# HTTP delete media trigger function processed a request.");
-
-            if (!Guid.TryParse(identifier, out Guid id)) throw new NullReferenceException();
-
             var storageAccount = CloudStorageAccount.Parse(Environment.GetEnvironmentVariable("AzureWebJobsStorage"));
             var blobClient = storageAccount.CreateCloudBlobClient();
             var container = blobClient.GetContainerReference("images");
@@ -220,37 +256,38 @@ namespace SimpleCmsApi
 
             Gallery gallery = new Gallery();
 
-
             // load images.json
             var blob = container.GetBlockBlobReference(imagesJsonFilename);
-            if (blob != null || (await blob.ExistsAsync()))
+            if (blob != null)
             {
-                var body = await blob.DownloadTextAsync();
-                if (!string.IsNullOrWhiteSpace(body))
+                if (await blob.ExistsAsync())
                 {
-                    var imageList = JsonSerializer.Deserialize<List<GalleryImage>>(body, options);
-                    gallery.Images.AddRange(imageList);
+                    var body = await blob.DownloadTextAsync();
+                    if (!string.IsNullOrWhiteSpace(body))
+                    {
+                        var imageList = JsonSerializer.Deserialize<List<GalleryImage>>(body, options);
+                        gallery.Images.AddRange(imageList);
+                    }
                 }
-            }
 
-            // find file
-            var item = gallery.Images.SingleOrDefault(x => x.Id == id);
-            if (item != null)
-            {
-                gallery.Images.Remove(item);
-                var outputBody = JsonSerializer.Serialize(gallery.Images, options);
-                await blob.UploadTextAsync(outputBody);
-                log.LogInformation("Updated images.json");
-                foreach (var key in item.Files.Keys)
+                // find file
+                var item = gallery.Images.SingleOrDefault(x => x.Id == id);
+                if (item != null)
                 {
-                    var path = item.Files[key].Path;
-                    log.LogInformation("Deleted {deleted}", path);
-                    var f = container.GetBlockBlobReference(path);
-                    await f.DeleteIfExistsAsync();
+                    gallery.Images.Remove(item);
+                    var outputBody = JsonSerializer.Serialize(gallery.Images, options);
+                    await blob.UploadTextAsync(outputBody);
+                    log.LogInformation("Updated images.json");
+                    foreach (var key in item.Files.Keys)
+                    {
+                        var path = item.Files[key].Path;
+                        log.LogInformation("Deleted {deleted}", path);
+                        var f = container.GetBlockBlobReference(path);
+                        await f.DeleteIfExistsAsync();
+                    }
                 }
             }
-            return new OkObjectResult(gallery);
+            return gallery;
         }
-
     }
 }

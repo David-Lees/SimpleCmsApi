@@ -1,11 +1,10 @@
 ﻿// https://github.com/jellever/DominantColor/blob/master/DominantColor/ColorUtils.cs
 
 using SixLabors.ImageSharp;
-using System;
-using System.Collections.Generic;
-using System.Text;
 using SixLabors.ImageSharp.Advanced;
 using SixLabors.ImageSharp.PixelFormats;
+using System;
+using System.Collections.Generic;
 
 namespace SimpleCmsApi.Models
 {
@@ -117,7 +116,7 @@ namespace SimpleCmsApi.Models
         }
 
         /// <summary>
-        /// Smooth histogram with given smoothfactor. 
+        /// Smooth histogram with given smoothfactor.
         /// </summary>
         /// <param name="colorHueHistogram">The histogram to smooth</param>
         /// <param name="smoothFactor">How many hue neighbouring hue indexes will be averaged by the smoothing algoritme.</param>
