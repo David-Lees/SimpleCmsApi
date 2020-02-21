@@ -27,7 +27,7 @@ namespace SimpleCmsApi
            ILogger log)
         {
             var gallery = await ProcessMediaAsync(req, log);
-            return new OkObjectResult(gallery);
+            return new OkObjectResult(gallery.Images);
         }
 
         private static Task<Gallery> ProcessMediaAsync(HttpRequest req, ILogger log)
