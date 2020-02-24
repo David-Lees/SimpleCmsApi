@@ -146,6 +146,16 @@ namespace SimpleCmsApi
                     stream.Position = 0;
                     await blob.UploadFromStreamAsync(stream).ConfigureAwait(true);
                 }
+            } 
+            else
+            {
+                name = ("files/" + id.ToString() + "/" + resolution + "-" + id.ToString() + ".png").ToLowerInvariant();
+                var blob = container.GetBlockBlobReference(name);
+                blob.Properties.ContentType = "image/jpeg";
+                using var stream = new MemoryStream();
+                image.SaveAsJpeg(stream, new SixLabors.ImageSharp.Formats.Jpeg.JpegEncoder { Quality = 90 });
+                stream.Position = 0;
+                await blob.UploadFromStreamAsync(stream).ConfigureAwait(true);
             }
             return new GalleryImageDetails
             {
