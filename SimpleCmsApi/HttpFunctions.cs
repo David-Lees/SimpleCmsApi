@@ -26,20 +26,22 @@ namespace SimpleCmsApi
            [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = null)] HttpRequest req,
            ILogger log)
         {
-            var gallery = await ProcessMediaAsync(req, log);
-            return new OkObjectResult(gallery.Images);
+            var folder = await ProcessMediaAsync(req, log);
+            return new OkObjectResult(folder);
         }
 
-        private static Task<Gallery> ProcessMediaAsync(HttpRequest req, ILogger log)
+        private static Task<GalleryFolder> ProcessMediaAsync(HttpRequest req, ILogger log)
         {
             if (req == null) throw new ArgumentNullException(nameof(req));
             if (log == null) throw new ArgumentNullException(nameof(log));
             string name = req.Query["filename"];
+            string folder = req.Query["folder"];
+            string description = req.Query["description"];
             if (string.IsNullOrWhiteSpace(name)) throw new ArgumentNullException(nameof(req));
-            return ProcessMediaInternalAsync(log, name);
+            return ProcessMediaInternalAsync(log, name, folder, description);
         }
 
-        private static async Task<Gallery> ProcessMediaInternalAsync(ILogger log, string name)
+        private static async Task<GalleryFolder> ProcessMediaInternalAsync(ILogger log, string name, string folder, string description)
         {
             log.LogInformation("C# HTTP process media trigger function processed a request.");
 
@@ -55,7 +57,7 @@ namespace SimpleCmsApi
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase
             };
 
-            Gallery gallery = new Gallery();
+            GalleryFolder root = new GalleryFolder() { Id = Guid.Empty.ToString() };
 
             // load images.json
             var blob = container.GetBlockBlobReference(imagesJsonFilename);
@@ -66,8 +68,7 @@ namespace SimpleCmsApi
                     var body = await blob.DownloadTextAsync();
                     if (!string.IsNullOrWhiteSpace(body))
                     {
-                        var imageList = JsonSerializer.Deserialize<List<GalleryImage>>(body, options);
-                        gallery.Images.AddRange(imageList);
+                        root = JsonSerializer.Deserialize<GalleryFolder>(body, options);
                     }
                 }
 
@@ -84,7 +85,8 @@ namespace SimpleCmsApi
                 {
                     Id = id,
                     DominantColour = "#" + hueCalc.CalculateDominantColor(src).ToHex(),
-                    Files = new Dictionary<string, GalleryImageDetails>()
+                    Files = new Dictionary<string, GalleryImageDetails>(),
+                    Description = description
                 };
 
                 var resolutions = GetResolutions();
@@ -99,17 +101,35 @@ namespace SimpleCmsApi
                     );
                 }
 
-                gallery.Images.Add(galleryImage);
-
+                if (!string.IsNullOrWhiteSpace(folder))
+                {
+                    (GetFolderRecursive(root, folder) ?? root)
+                        .Images.Add(galleryImage);
+                }
+                else
+                {
+                    root.Images.Add(galleryImage);
+                }
                 // save images.json
-                var outputBody = JsonSerializer.Serialize(gallery.Images, options);
+                var outputBody = JsonSerializer.Serialize(root, options);
                 await blob.UploadTextAsync(outputBody);
                 log.LogInformation("Updated images.json");
 
                 // delete original file
                 await f.DeleteAsync().ConfigureAwait(true);
             }
-            return gallery;
+            return root;
+        }
+
+        private static GalleryFolder GetFolderRecursive(GalleryFolder root, string id)
+        {
+            if (root.Id == id) return root;
+            foreach (var f in root.Folders)
+            {
+                var r = GetFolderRecursive(f, id);
+                if (r != null) return r;
+            }
+            return null;
         }
 
         private static async Task<GalleryImageDetails> CreatePreviewImageAsync(
@@ -146,7 +166,7 @@ namespace SimpleCmsApi
                     stream.Position = 0;
                     await blob.UploadFromStreamAsync(stream).ConfigureAwait(true);
                 }
-            } 
+            }
             else
             {
                 name = ("files/" + id.ToString() + "/" + resolution + "-" + id.ToString() + ".png").ToLowerInvariant();
@@ -242,7 +262,7 @@ namespace SimpleCmsApi
             return new OkObjectResult(gallery);
         }
 
-        private static Task<Gallery> DeleteMediaAsync(HttpRequest req,
+        private static Task<GalleryFolder> DeleteMediaAsync(HttpRequest req,
             string identifier,
             ILogger log)
         {
@@ -251,7 +271,7 @@ namespace SimpleCmsApi
             return DeleteMediaInternalAsync(id, log);
         }
 
-        private static async Task<Gallery> DeleteMediaInternalAsync(Guid id, ILogger log)
+        private static async Task<GalleryFolder> DeleteMediaInternalAsync(Guid id, ILogger log)
         {
             log.LogInformation("C# HTTP delete media trigger function processed a request.");
             var storageAccount = CloudStorageAccount.Parse(Environment.GetEnvironmentVariable("AzureWebJobsStorage"));
@@ -264,8 +284,7 @@ namespace SimpleCmsApi
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase
             };
 
-            Gallery gallery = new Gallery();
-
+            GalleryFolder root = new GalleryFolder();
             // load images.json
             var blob = container.GetBlockBlobReference(imagesJsonFilename);
             if (blob != null)
@@ -275,29 +294,73 @@ namespace SimpleCmsApi
                     var body = await blob.DownloadTextAsync();
                     if (!string.IsNullOrWhiteSpace(body))
                     {
-                        var imageList = JsonSerializer.Deserialize<List<GalleryImage>>(body, options);
-                        gallery.Images.AddRange(imageList);
+                        root = JsonSerializer.Deserialize<GalleryFolder>(body, options);
                     }
                 }
 
-                // find file
-                var item = gallery.Images.SingleOrDefault(x => x.Id == id);
-                if (item != null)
+                // find folder
+                var folder = FindImageFolder(root, id);
+                if (folder != null)
                 {
-                    gallery.Images.Remove(item);
-                    var outputBody = JsonSerializer.Serialize(gallery.Images, options);
-                    await blob.UploadTextAsync(outputBody);
-                    log.LogInformation("Updated images.json");
-                    foreach (var key in item.Files.Keys)
+                    var item = folder.Images.SingleOrDefault(x => x.Id == id);
+                    if (item != null)
                     {
-                        var path = item.Files[key].Path;
-                        log.LogInformation("Deleted {deleted}", path);
-                        var f = container.GetBlockBlobReference(path);
-                        await f.DeleteIfExistsAsync();
+                        folder.Images.Remove(item);
+                        var outputBody = JsonSerializer.Serialize(root, options);
+                        await blob.UploadTextAsync(outputBody);
+                        log.LogInformation("Updated images.json");
+                        foreach (var key in item.Files.Keys)
+                        {
+                            var path = item.Files[key].Path;
+                            log.LogInformation("Deleted {deleted}", path);
+                            var f = container.GetBlockBlobReference(path);
+                            await f.DeleteIfExistsAsync();
+                        }
                     }
                 }
             }
-            return gallery;
+            return root;
+        }
+
+        private static GalleryFolder FindImageFolder(GalleryFolder root, Guid id)
+        {
+            if (root.Images.Any(x => x.Id == id)) return root;
+            foreach (var f in root.Folders)
+            {
+                var r = FindImageFolder(f, id);
+                if (r != null) return r;
+            }
+            return null;
+        }
+
+        [FunctionName("UpdateMedia")]
+        public static async Task<IActionResult> UpdateMedia(
+            [HttpTrigger(AuthorizationLevel.Anonymous, Route = "UpdateMedia")] HttpRequest req,
+            ILogger log)
+        {
+            await UpdateMediaAsync(req, log);
+            return new OkResult();
+        }
+
+        private static Task UpdateMediaAsync(HttpRequest req, ILogger log)
+        {
+            if (req == null) throw new ArgumentNullException(nameof(req));
+            if (log == null) throw new ArgumentNullException(nameof(log));
+            return UpdateMediaInternalAsync(req, log);
+        }
+
+        private static async Task UpdateMediaInternalAsync(HttpRequest req, ILogger log)
+        {
+            log.LogInformation("C# HTTP update media trigger function processed a request.");
+
+            using var sr = new StreamReader(req.Body);
+            string requestBody = await sr.ReadToEndAsync();
+
+            var storageAccount = CloudStorageAccount.Parse(Environment.GetEnvironmentVariable("AzureWebJobsStorage"));
+            var blobClient = storageAccount.CreateCloudBlobClient();
+            var container = blobClient.GetContainerReference("images");
+            var blob = container.GetBlockBlobReference("images.json");
+            await blob.UploadTextAsync(requestBody).ConfigureAwait(true);
         }
     }
 }
