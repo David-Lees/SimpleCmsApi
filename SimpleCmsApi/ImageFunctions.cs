@@ -4,6 +4,7 @@ using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Extensions.Logging;
 using SimpleCmsApi.Services;
+using System;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -26,8 +27,15 @@ namespace SimpleCmsApi
             ILogger log, string parent, string id)
         {
             log.LogInformation($"{req.Method} - Remove image {id} in parent {parent}");
-            await ImageService.Instance.DeleteImage(parent, id);
-            return new OkResult();
+            try
+            {
+                await ImageService.Instance.DeleteImage(parent, id, log);
+                return new OkResult();
+            }
+            catch (NullReferenceException)
+            {
+                return new NotFoundResult();
+            }
         }
 
         [FunctionName("MoveImage")]
