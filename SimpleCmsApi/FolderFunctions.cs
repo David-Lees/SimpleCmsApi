@@ -5,6 +5,7 @@ using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Extensions.Logging;
 using SimpleCmsApi.Models;
 using SimpleCmsApi.Services;
+using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
 
@@ -17,9 +18,11 @@ namespace SimpleCmsApi
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "folder")] HttpRequest req,
             ILogger log)
         {
-            var item = await JsonSerializer.DeserializeAsync<GalleryFolder>(req.Body);
-            log.LogInformation($"Create folder {item.Name}, id {item.RowKey} in parent {item.PartitionKey}");
-            await FolderService.Instance.CreateFolder(item);
+            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+            var item = JsonSerializer.Deserialize<GalleryFolderRequest>(requestBody);
+            if (item == null) return new NotFoundResult();
+            log.LogInformation($"Create folder {item.Name}, id {item.RowKey} in parent {item.PartitionKey} ({requestBody})");
+            await FolderService.Instance.CreateFolder(new GalleryFolder(item.PartitionKey, item.RowKey, item.Name));
             return new OkResult();
         }
 

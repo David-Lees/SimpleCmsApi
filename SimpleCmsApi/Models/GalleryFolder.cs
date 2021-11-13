@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.Json.Serialization;
 
 namespace SimpleCmsApi.Models
 {
@@ -19,5 +20,17 @@ namespace SimpleCmsApi.Models
         }
 
         public string Name { get; set; }
+    }
+
+    public class GalleryFolderRequest
+    {
+        [JsonPropertyName("partitionKey")]
+        public string PartitionKey { get; set; }
+
+        [JsonPropertyName("rowKey")]
+        public string RowKey { get; set; }
+
+        [JsonPropertyName("name")]
+        public string Name { set; get; }
     }
 }
