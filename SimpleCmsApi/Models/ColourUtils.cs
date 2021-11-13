@@ -19,7 +19,7 @@ namespace SimpleCmsApi.Models
         /// <returns>A dictionary representing the hue histogram. Key: Hue index (0-360). Value: Occurence of the hue.</returns>
         internal static Dictionary<int, uint> GetColorHueHistogram(Image image, float saturationThreshold, float brightnessThreshold)
         {
-            Dictionary<int, uint> colorHueHistorgram = new Dictionary<int, uint>();
+            var colorHueHistorgram = new Dictionary<int, uint>();
             for (int i = 0; i <= 360; i++)
             {
                 colorHueHistorgram.Add(i, 0);
@@ -128,7 +128,7 @@ namespace SimpleCmsApi.Models
             if (smoothFactor == 0)
                 return new Dictionary<int, uint>(colorHueHistogram);
 
-            Dictionary<int, uint> newHistogram = new Dictionary<int, uint>();
+            var newHistogram = new Dictionary<int, uint>();
             int totalNrColumns = (smoothFactor * 2) + 1;
             for (int i = 0; i <= 360; i++)
             {

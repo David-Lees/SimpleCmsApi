@@ -1,20 +1,23 @@
-﻿using System;
+﻿using Microsoft.Azure.Cosmos.Table;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
 namespace SimpleCmsApi.Models
 {
-    public class GalleryFolder
+    public class GalleryFolder : TableEntity
     {
-        public string Name { get; set; }
-        public string Id { get; set; }
-        public List<GalleryImage> Images { get; set; }
-        public List<GalleryFolder> Folders { get; set; }
+        public GalleryFolder(string parentFolderId, string id, string name)
+        {
+            PartitionKey = parentFolderId;
+            RowKey = id;
+            Name = name;
+        }
 
         public GalleryFolder()
         {
-            Images = new List<GalleryImage>();
-            Folders = new List<GalleryFolder>();
         }
+
+        public string Name { get; set; }
     }
 }
