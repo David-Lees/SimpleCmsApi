@@ -15,6 +15,13 @@ namespace SimpleCmsApi.Models
             Name = name;
         }
 
+        public GalleryFolder(GalleryFolderRequest req)
+        {
+            PartitionKey = req.PartitionKey;
+            RowKey= req.RowKey;
+            Name = req.Name;
+        }
+
         public GalleryFolder()
         {
         }

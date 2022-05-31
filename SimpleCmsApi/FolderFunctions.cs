@@ -22,7 +22,7 @@ namespace SimpleCmsApi
             var item = JsonSerializer.Deserialize<GalleryFolderRequest>(requestBody);
             if (item == null) return new NotFoundResult();
             log.LogInformation($"Create folder {item.Name}, id {item.RowKey} in parent {item.PartitionKey} ({requestBody})");
-            await FolderService.Instance.CreateFolder(new GalleryFolder(item.PartitionKey, item.RowKey, item.Name));
+            await FolderService.Instance.CreateFolder(new GalleryFolder(item));
             return new OkResult();
         }
 
@@ -31,12 +31,11 @@ namespace SimpleCmsApi
             [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "folder")] HttpRequest req,
             ILogger log)
         {
-            var item = await JsonSerializer.DeserializeAsync<GalleryFolder>(req.Body);
-            if (item != null)
-            {
-                log.LogInformation($"Delete folder {item.RowKey} in parent {item.PartitionKey}");
-                await FolderService.Instance.DeleteFolder(item);
-            }
+            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+            var item = JsonSerializer.Deserialize<GalleryFolderRequest>(requestBody);
+            if (item == null) return new NotFoundResult();
+            log.LogInformation($"Delete folder {item.RowKey} in parent {item.PartitionKey}");
+            await FolderService.Instance.DeleteFolder(new(item));
             return new OkResult();
         }
 
@@ -46,12 +45,11 @@ namespace SimpleCmsApi
             ILogger log,
             string newParent)
         {
-            var item = await JsonSerializer.DeserializeAsync<GalleryFolder>(req.Body);
-            if (item != null)
-            {
-                log.LogInformation($"Move folder {item.Name} from {item.PartitionKey} to {newParent}");
-                await FolderService.Instance.MoveFolder(newParent, item);
-            }
+            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+            var item = JsonSerializer.Deserialize<GalleryFolderRequest>(requestBody);
+            if (item == null) return new NotFoundResult();
+            log.LogInformation($"Move folder {item.Name} from {item.PartitionKey} to {newParent}");
+            await FolderService.Instance.MoveFolder(newParent, new(item));
             return new OkResult();
         }
 
