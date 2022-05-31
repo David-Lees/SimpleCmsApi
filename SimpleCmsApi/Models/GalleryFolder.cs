@@ -1,20 +1,43 @@
-﻿using System;
+﻿using Microsoft.Azure.Cosmos.Table;
+using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.Json.Serialization;
 
 namespace SimpleCmsApi.Models
 {
-    public class GalleryFolder
+    public class GalleryFolder : TableEntity
     {
-        public string Name { get; set; }
-        public string Id { get; set; }
-        public List<GalleryImage> Images { get; set; }
-        public List<GalleryFolder> Folders { get; set; }
+        public GalleryFolder(string parentFolderId, string id, string name)
+        {
+            PartitionKey = parentFolderId;
+            RowKey = id;
+            Name = name;
+        }
+
+        public GalleryFolder(GalleryFolderRequest req)
+        {
+            PartitionKey = req.PartitionKey;
+            RowKey= req.RowKey;
+            Name = req.Name;
+        }
 
         public GalleryFolder()
         {
-            Images = new List<GalleryImage>();
-            Folders = new List<GalleryFolder>();
         }
+
+        public string Name { get; set; }
+    }
+
+    public class GalleryFolderRequest
+    {
+        [JsonPropertyName("partitionKey")]
+        public string PartitionKey { get; set; }
+
+        [JsonPropertyName("rowKey")]
+        public string RowKey { get; set; }
+
+        [JsonPropertyName("name")]
+        public string Name { set; get; }
     }
 }

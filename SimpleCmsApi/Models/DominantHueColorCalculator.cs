@@ -61,7 +61,7 @@ namespace SimpleCmsApi.Models
         /// </summary>
         /// <param name="hueHistogram"></param>
         /// <returns></returns>
-        private int GetDominantHue(Dictionary<int, uint> hueHistogram)
+        private static int GetDominantHue(Dictionary<int, uint> hueHistogram)
         {
             int dominantHue = hueHistogram.Aggregate((l, r) => l.Value > r.Value ? l : r).Key;
             return dominantHue;
