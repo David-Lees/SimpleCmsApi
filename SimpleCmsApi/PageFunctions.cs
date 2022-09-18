@@ -1,21 +1,9 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using Azure.Storage.Blobs;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Extensions.Logging;
-using Microsoft.WindowsAzure.Storage;
-using Microsoft.WindowsAzure.Storage.Blob;
-using SimpleCmsApi.Models;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Processing;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text.Json;
-using System.Threading.Tasks;
-using Microsoft.Azure.Cosmos.Table;
-using Azure.Storage.Blobs;
 
 namespace SimpleCmsApi
 {
@@ -24,7 +12,7 @@ namespace SimpleCmsApi
 
         [FunctionName("UpdateSite")]
         public static async Task<IActionResult> UpdateSite(
-            [HttpTrigger(AuthorizationLevel.Anonymous, Route = null)] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.User, Route = null)] HttpRequest req,
             ILogger log)
         {
             await UpdateSiteAsync(req, log);

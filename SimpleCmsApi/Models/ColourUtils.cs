@@ -5,6 +5,8 @@ using SixLabors.ImageSharp.Advanced;
 using SixLabors.ImageSharp.PixelFormats;
 using System;
 using System.Collections.Generic;
+using static System.Net.Mime.MediaTypeNames;
+using Image = SixLabors.ImageSharp.Image;
 
 namespace SimpleCmsApi.Models
 {
@@ -24,20 +26,27 @@ namespace SimpleCmsApi.Models
             {
                 colorHueHistorgram.Add(i, 0);
             }
-            for (int i = 0; i < image.Height; ++i)
+            if (image is Image<Rgba32> imageRgba32)
             {
-                var pixelRowSpan = (image as Image<Rgba32>).GetPixelRowSpan(i).ToArray();
-                for (int j = 0; j < image.Width; ++j)
+                imageRgba32.ProcessPixelRows(pixelAccessor =>
                 {
-                    var pixel = pixelRowSpan[j];
-                    RgbToHls(pixel.R, pixel.G, pixel.B, out double h, out double l, out double s);
-                    if (s > saturationThreshold && l > brightnessThreshold)
+                    for (int i = 0; i < pixelAccessor.Height; ++i)
                     {
-                        int hue = (int)Math.Round(h, 0);
-                        colorHueHistorgram[hue]++;
+                        var row = pixelAccessor.GetRowSpan(i);
+                        for (int j = 0; j < row.Length; ++j)
+                        {
+                            var pixel = row[j];
+                            RgbToHls(pixel.R, pixel.G, pixel.B, out double h, out double l, out double s);
+                            if (s > saturationThreshold && l > brightnessThreshold)
+                            {
+                                int hue = (int)Math.Round(h, 0);
+                                colorHueHistorgram[hue]++;
+                            }
+                        }
                     }
-                }
+                });
             }
+
             return colorHueHistorgram;
         }
 
@@ -52,23 +61,30 @@ namespace SimpleCmsApi.Models
             int totalGreen = 0;
             int totalBlue = 0;
 
-            for (int i = 0; i < bmp.Height; ++i)
+            if (bmp is Image<Rgba32> imageRgba32)
             {
-                var pixelRowSpan = (bmp as Image<Rgba32>).GetPixelRowSpan(i).ToArray();
-                for (int j = 0; j < bmp.Width; ++j)
+                imageRgba32.ProcessPixelRows(pixelAccessor =>
                 {
-                    var clr = pixelRowSpan[j];
-                    totalRed += clr.R;
-                    totalGreen += clr.G;
-                    totalBlue += clr.B;
-                }
-            }
+                    for (int i = 0; i < pixelAccessor.Height; ++i)
+                    {
+                        var row = pixelAccessor.GetRowSpan(i);
+                        for (int j = 0; j < row.Length; ++j)
+                        {
+                            var clr = row[j];
+                            totalRed += clr.R;
+                            totalGreen += clr.G;
+                            totalBlue += clr.B;
+                        }
+                    }
+                });
 
-            int totalPixels = bmp.Width * bmp.Height;
-            byte avgRed = (byte)(totalRed / totalPixels);
-            byte avgGreen = (byte)(totalGreen / totalPixels);
-            byte avgBlue = (byte)(totalBlue / totalPixels);
-            return Color.FromRgb(avgRed, avgGreen, avgBlue);
+                int totalPixels = bmp.Width * bmp.Height;
+                byte avgRed = (byte)(totalRed / totalPixels);
+                byte avgGreen = (byte)(totalGreen / totalPixels);
+                byte avgBlue = (byte)(totalBlue / totalPixels);
+                return Color.FromRgb(avgRed, avgGreen, avgBlue);
+            }
+            return Color.Transparent;
         }
 
         /// <summary>

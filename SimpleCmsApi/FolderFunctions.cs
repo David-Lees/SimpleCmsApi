@@ -1,65 +1,66 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using MediatR;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
-using Microsoft.Extensions.Logging;
+using Serilog;
+using SimpleCmsApi.Handlers;
 using SimpleCmsApi.Models;
-using SimpleCmsApi.Services;
-using System.IO;
 using System.Text.Json;
-using System.Threading.Tasks;
 
-namespace SimpleCmsApi
+namespace SimpleCmsApi;
+
+public class FolderFunctions
 {
-    public static class FolderFunctions
+    private readonly IMediator _m;
+
+    public FolderFunctions(IMediator m)
     {
-        [FunctionName("CreateFolder")]
-        public static async Task<IActionResult> CreateFolder(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "folder")] HttpRequest req,
-            ILogger log)
-        {
-            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            var item = JsonSerializer.Deserialize<GalleryFolderRequest>(requestBody);
-            if (item == null) return new NotFoundResult();
-            log.LogInformation($"Create folder {item.Name}, id {item.RowKey} in parent {item.PartitionKey} ({requestBody})");
-            await FolderService.Instance.CreateFolder(new GalleryFolder(item));
-            return new OkResult();
-        }
+        _m = m;
+    }
 
-        [FunctionName("DeleteFolder")]
-        public static async Task<IActionResult> DeleteFolder(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "folder")] HttpRequest req,
-            ILogger log)
-        {
-            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            var item = JsonSerializer.Deserialize<GalleryFolderRequest>(requestBody);
-            if (item == null) return new NotFoundResult();
-            log.LogInformation($"Delete folder {item.RowKey} in parent {item.PartitionKey}");
-            await FolderService.Instance.DeleteFolder(new(item));
-            return new OkResult();
-        }
+    [FunctionName("CreateFolder")]
+    public async Task<IActionResult> CreateFolder(
+        [HttpTrigger(AuthorizationLevel.User, "post", Route = "folder")] HttpRequest req)
+    {
+        string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+        var item = JsonSerializer.Deserialize<GalleryFolderRequest>(requestBody);
+        if (item == null) return new NotFoundResult();
+        Log.Information($"Create folder {item.Name}, id {item.RowKey} in parent {item.PartitionKey} ({requestBody})");
+        await _m.Send(new CreateFolderCommand(new GalleryFolder(item)));
+        return new OkResult();
+    }
 
-        [FunctionName("MoveFolder")]
-        public static async Task<IActionResult> MoveFolder(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "folder/{newParent}")] HttpRequest req,
-            ILogger log,
-            string newParent)
-        {
-            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            var item = JsonSerializer.Deserialize<GalleryFolderRequest>(requestBody);
-            if (item == null) return new NotFoundResult();
-            log.LogInformation($"Move folder {item.Name} from {item.PartitionKey} to {newParent}");
-            await FolderService.Instance.MoveFolder(newParent, new(item));
-            return new OkResult();
-        }
+    [FunctionName("DeleteFolder")]
+    public async Task<IActionResult> DeleteFolder(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "folder")] HttpRequest req)
+    {
+        string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+        var item = JsonSerializer.Deserialize<GalleryFolderRequest>(requestBody);
+        if (item == null) return new NotFoundResult();
+        Log.Information($"Delete folder {item.RowKey} in parent {item.PartitionKey}");
+        await _m.Send(new DeleteFolderCommand(new(item)));
+        return new OkResult();
+    }
 
-        [FunctionName("GetFolders")]
-        public static IActionResult GetFolders(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "folder")] HttpRequest req,
-            ILogger log)
-        {
-            log.LogInformation($"Get All Folders - {req.Path}");
-            return new OkObjectResult(FolderService.Instance.GetFolders());
-        }
+    [FunctionName("MoveFolder")]
+    public async Task<IActionResult> MoveFolder(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "folder/{newParent}")] HttpRequest req,        
+        string newParent)
+    {
+        string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+        var item = JsonSerializer.Deserialize<GalleryFolderRequest>(requestBody);
+        if (item == null) return new NotFoundResult();
+        Log.Information($"Move folder {item.Name} from {item.PartitionKey} to {newParent}");
+        await _m.Send(new MoveFolderCommand(newParent, new(item)));
+        return new OkResult();
+    }
+
+    [FunctionName("GetFolders")]
+    public async Task<IActionResult> GetFolders(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "folder")] HttpRequest req)
+    {
+        Log.Information($"Get All Folders - {req.Path}");
+        return new OkObjectResult(await _m.Send(new GetFoldersQuery()));
     }
 }
