@@ -3,10 +3,10 @@ using Azure.Storage.Blobs;
 using MediatR;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
+using OpenCvSharp;
+using OpenCvSharp.ML;
 using Serilog;
 using SimpleCmsApi.Models;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Processing;
 
 namespace SimpleCmsApi.Handlers;
 
@@ -15,23 +15,26 @@ public record ProcessMediaCommand(HttpRequest Request) : IRequest;
 public class ProcessMediaHandler : IRequestHandler<ProcessMediaCommand>
 {
     private readonly IConfiguration _config;
+    private readonly IMediator _m;
 
-    public ProcessMediaHandler(IConfiguration config)
+    public ProcessMediaHandler(IConfiguration config, IMediator m)
     {
         _config = config;
+        _m = m;
     }
 
-    public Task<Unit> Handle(ProcessMediaCommand request, CancellationToken cancellationToken)
+    public Task Handle(ProcessMediaCommand request, CancellationToken cancellationToken)
     {
         if (request.Request == null) throw new ArgumentNullException(nameof(request));        
-        string name = request.Request.Query["filename"];
-        string folder = request.Request.Query["folder"];
-        string description = request.Request.Query["description"];
+        var name = request.Request.Query["filename"].FirstOrDefault();
+        var folder = request.Request.Query["folder"].FirstOrDefault();
+        var description = request.Request.Query["description"].FirstOrDefault() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(name)) throw new ArgumentNullException(nameof(request));
+        if (string.IsNullOrWhiteSpace(folder)) throw new ArgumentNullException(nameof(request));
         return ProcessMediaInternalAsync(name, folder, description, cancellationToken);
     }
 
-    private async Task<Unit> ProcessMediaInternalAsync(string name, string folder, string description, CancellationToken cancellationToken)
+    private async Task ProcessMediaInternalAsync(string name, string folder, string description, CancellationToken cancellationToken)
     {
         Log.Information("C# HTTP process media trigger function processed a request.");
         var connectionString = _config.GetValue<string>("AzureWebJobsBlobStorage");
@@ -47,19 +50,21 @@ public class ProcessMediaHandler : IRequestHandler<ProcessMediaCommand>
         using var stream = new MemoryStream();
         await f.DownloadToAsync(stream, cancellationToken);
         stream.Position = 0;
-        using var src = Image.Load(stream);
+        var src = stream.GetBuffer();
 
         var id = Guid.NewGuid();
-        var hueCalc = new DominantHueColorCalculator(0.5f, 0.5f, 60);
 
-        var small = await CreatePreviewImageAsync(src.Clone(x => x.AutoOrient()), 375, "preview-small", container, id);
-        var medium = await CreatePreviewImageAsync(src.Clone(x => x.AutoOrient()), 768, "preview-medium", container, id);
-        var large = await CreatePreviewImageAsync(src.Clone(x => x.AutoOrient()), 1080, "preview-large", container, id);
-        var raw = await CreatePreviewImageAsync(src.Clone(x => x.AutoOrient()), null, "preview-raw", container, id);
+        var hueCalc = await _m.Send(new CalculateDominantColourQuery(src), cancellationToken);
+
+        var small = await CreatePreviewImageAsync(src, 375, "preview-small", container, id, ".jpg", cancellationToken);
+        var medium = await CreatePreviewImageAsync(src, 768, "preview-medium", container, id, ".jpg", cancellationToken);
+        var large = await CreatePreviewImageAsync(src, 1080, "preview-large", container, id, ".jpg", cancellationToken);
+        var raw = await CreatePreviewImageAsync(src, null, "preview-raw", container, id, ".jpg", cancellationToken);
+        var original = await CreatePreviewImageAsync(src, null, "original", container, id, ".png", cancellationToken);
 
         var galleryImage = new GalleryImage(folder, id.ToString())
         {
-            DominantColour = "#" + hueCalc.CalculateDominantColor(src).ToHex(),
+            DominantColour = "#" + Convert.ToHexString(new byte[] { hueCalc.Red, hueCalc.Green, hueCalc.Blue }),
             Description = description,
             PreviewSmallPath = small.Path,
             PreviewSmallWidth = small.Width,
@@ -70,6 +75,9 @@ public class ProcessMediaHandler : IRequestHandler<ProcessMediaCommand>
             PreviewLargePath = large.Path,
             PreviewLargeWidth = large.Width,
             PreviewLargeHeight = large.Height,
+            OriginalPath = original.Path,
+            OriginalHeight = original.Height,
+            OriginalWidth = original.Width,
             RawPath = raw.Path,
             RawWidth = raw.Width,
             RawHeight = raw.Height
@@ -79,39 +87,27 @@ public class ProcessMediaHandler : IRequestHandler<ProcessMediaCommand>
 
         // delete original file
         await f.DeleteAsync(cancellationToken: cancellationToken).ConfigureAwait(true);
-
-        return Unit.Value;
     }
 
-
-    private static async Task<GalleryImageDetails> CreatePreviewImageAsync(
-       Image image, int? res, string resolution, BlobContainerClient container, Guid id)
+    private async Task<GalleryImageDetails> CreatePreviewImageAsync(
+       byte[] image, int? res, string resolution, BlobContainerClient container, Guid id, string ext, CancellationToken cancellationToken)
     {
-        var width = image.Width;
-        var height = image.Height;
-        string name = string.Empty;
-        if (res != null)
-        {
-            double ratio = (double)res / image.Height;
-            width = (int)(image.Width * ratio);
-            height = (int)(image.Height * ratio);
-            if (ratio < 1.0)
-            {
-                image.Mutate(x => x.Resize(width, height));
-            }
-        }
-        name = ("files/" + id.ToString() + "/" + resolution + "-" + id.ToString() + ".jpg").ToLowerInvariant();
+        var resizedImage = await _m.Send(new ResizeImageCommand(image, res), cancellationToken);
 
-        using var stream = new MemoryStream();
-        image.SaveAsJpeg(stream, new SixLabors.ImageSharp.Formats.Jpeg.JpegEncoder { Quality = 90 });
+        var name = ("files/" + id.ToString() + "/" + resolution + "-" + id.ToString() + ext).ToLowerInvariant();
+
+        var output = resizedImage.Image.ImEncode(ext);
+        resizedImage.Image.Dispose();
+        using var stream = new MemoryStream(output);
         stream.Position = 0;
-        await container.UploadBlobAsync(name, stream);
+   
+        await container.UploadBlobAsync(name, stream, cancellationToken);
 
         return new GalleryImageDetails
         {
             Path = name,
-            Width = width,
-            Height = height
+            Width = resizedImage.Width,
+            Height = resizedImage.Height
         };
     }
 }

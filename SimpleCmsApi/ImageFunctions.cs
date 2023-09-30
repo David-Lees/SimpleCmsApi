@@ -1,8 +1,8 @@
 using MediatR;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Extensions.Http;
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.Configuration;
 using Serilog;
 using SimpleCmsApi.Handlers;
 
@@ -17,7 +17,7 @@ public class ImageFunctions
         _m = m;
     }
 
-    [FunctionName("ProcessUpload")]
+    [Function("ProcessUpload")]
     public async Task<IActionResult> ProcessUpload(
        [HttpTrigger(AuthorizationLevel.User, "get", "post", Route = null)] HttpRequest req)
     {
@@ -25,7 +25,7 @@ public class ImageFunctions
         return new OkResult();
     }
 
-    [FunctionName("DeleteImage")]
+    [Function("DeleteImage")]
     public async Task<IActionResult> DeleteImage(
         [HttpTrigger(AuthorizationLevel.User, "delete", Route = "folder/{parent}/{id}")] HttpRequest req,
         string parent, string id)
@@ -42,20 +42,24 @@ public class ImageFunctions
         }
     }
 
-    [FunctionName("MoveImage")]
+    [Function("MoveImage")]
     public async Task<IActionResult> MoveImage(
         [HttpTrigger(AuthorizationLevel.User, "get", "post", Route = null)] HttpRequest req)
     {
-        var oldParent = req.Query["oldParent"];
-        var newParent = req.Query["newParent"];
-        var id = req.Query["id"];
+        var oldParent = req.Query["oldParent"].FirstOrDefault();
+        var newParent = req.Query["newParent"].FirstOrDefault();
+        var id = req.Query["id"].FirstOrDefault(); 
+        if (string.IsNullOrEmpty(oldParent) || string.IsNullOrEmpty(newParent) || string.IsNullOrEmpty(id))
+        {
+            return new NotFoundResult();
+        }
         Log.Information($"Move folder {id} from {oldParent} to {newParent}");
         var image = await _m.Send(new GetImageQuery(oldParent, id));
         await _m.Send(new MoveImageCommand(newParent, image));
         return new OkResult();
     }
 
-    [FunctionName("GetImages")]
+    [Function("GetImages")]
     public async Task<IActionResult> GetImages(
         [HttpTrigger(AuthorizationLevel.User, "get", Route = "folder/{parent}")] HttpRequest req,
         string parent)

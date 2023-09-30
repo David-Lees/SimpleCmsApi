@@ -1,5 +1,6 @@
 ﻿using Azure.Storage.Blobs;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Serilog;
 using Serilog.Events;
 
@@ -15,6 +16,7 @@ public static class StartupHelper
             .AddJsonFile("appsettings.json", true)
             .AddJsonFile("local.settings.json", true)
             .AddEnvironmentVariables();
+
         return config;
     }
 

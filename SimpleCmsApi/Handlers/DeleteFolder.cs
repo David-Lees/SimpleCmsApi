@@ -16,11 +16,10 @@ public class DeleteFolderHandler : IRequestHandler<DeleteFolderCommand>
         _config = config;
     }
 
-    public async Task<Unit> Handle(DeleteFolderCommand request, CancellationToken cancellationToken)
+    public async Task Handle(DeleteFolderCommand request, CancellationToken cancellationToken)
     {
         var client = new TableClient(_config.GetValue<string>("AzureWebJobsBlobStorage"), "Folders");
         await client.CreateIfNotExistsAsync(cancellationToken);
         await client.DeleteEntityAsync(request.Folder.PartitionKey, request.Folder.RowKey, cancellationToken: cancellationToken);
-        return Unit.Value;
     }
 }

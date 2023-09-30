@@ -5,7 +5,7 @@ using SimpleCmsApi.Models;
 
 namespace SimpleCmsApi.Handlers;
 
-public record GetFoldersQuery() : IRequest<List<GalleryFolder>>;
+public class GetFoldersQuery : IRequest<List<GalleryFolder>> { }
 
 public class GetFoldersHandler : IRequestHandler<GetFoldersQuery, List<GalleryFolder>>
 {

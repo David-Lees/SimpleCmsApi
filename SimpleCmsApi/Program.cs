@@ -1,21 +1,22 @@
-﻿using Microsoft.Extensions.Hosting;
-using Serilog;
-using SimpleCmsApi.Models;
-using MediatR;
-using SimpleCmsApi;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Serilog;
+using SimpleCmsApi;
+using SimpleCmsApi.Models;
 
 var config = StartupHelper.GetConfigurationBuilder().Build();
 Log.Logger = StartupHelper.GetSerilogConfiguration(config).CreateBootstrapLogger();
 
 Log.Information("Starting Simple CMS API");
 
+
 var host = new HostBuilder()
     .ConfigureFunctionsWorkerDefaults()
     .ConfigureAppConfiguration(config => StartupHelper.GetConfigurationBuilder(config))
     .ConfigureServices(services =>
     {
-        services.AddMediatR(typeof(HttpFunctions).Assembly);
+        services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(HttpFunctions).Assembly));
 
         var logger = StartupHelper.GetSerilogConfiguration(config);
         Log.Logger = logger.CreateLogger();

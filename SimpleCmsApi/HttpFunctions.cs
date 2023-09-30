@@ -2,15 +2,14 @@ using Azure.Storage.Blobs;
 using Azure.Storage.Sas;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Extensions.Http;
+using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 
 namespace SimpleCmsApi;
 
 public static class HttpFunctions
 {
-    [FunctionName("GetSasToken")]
+    [Function("GetSasToken")]
     public static IActionResult GetSasToken(
         [HttpTrigger(AuthorizationLevel.User, "get", "post", Route = null)] HttpRequest req,
         ILogger log)

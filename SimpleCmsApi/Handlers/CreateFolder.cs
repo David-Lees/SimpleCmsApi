@@ -16,11 +16,10 @@ public class CreateFolderHandler : IRequestHandler<CreateFolderCommand>
         _config = config;
     }
 
-    public async Task<Unit> Handle(CreateFolderCommand request, CancellationToken cancellationToken)
+    public async Task Handle(CreateFolderCommand request, CancellationToken cancellationToken)
     {
         var client = new TableClient(_config.GetValue<string>("AzureWebJobsBlobStorage"), "Folders");
         await client.CreateIfNotExistsAsync(cancellationToken);
         await client.UpsertEntityAsync(request.Folder, TableUpdateMode.Merge, cancellationToken);
-        return Unit.Value;
     }
 }

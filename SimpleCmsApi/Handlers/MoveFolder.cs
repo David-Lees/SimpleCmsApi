@@ -14,7 +14,7 @@ public class MoveFolderHandler : IRequestHandler<MoveFolderCommand>
         _m = m;
     }
 
-    public async Task<Unit> Handle(MoveFolderCommand request, CancellationToken cancellationToken)
+    public async Task Handle(MoveFolderCommand request, CancellationToken cancellationToken)
     {
         if (request.Item.RowKey != Guid.Empty.ToString())
         {
@@ -22,6 +22,5 @@ public class MoveFolderHandler : IRequestHandler<MoveFolderCommand>
             request.Item.PartitionKey = request.NewParent;
             await _m.Send(new CreateFolderCommand(request.Item), cancellationToken);
         }
-        return Unit.Value;
     }
 }
