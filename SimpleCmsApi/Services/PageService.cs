@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using Azure.Storage.Blobs;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
 namespace SimpleCmsApi.Services
@@ -19,11 +20,12 @@ namespace SimpleCmsApi.Services
             using var sr = new StreamReader(req.Body);
             string requestBody = await sr.ReadToEndAsync();
 
-            var storageAccount = Microsoft.WindowsAzure.Storage.CloudStorageAccount.Parse(Environment.GetEnvironmentVariable("AzureWebJobsStorage"));
-            var blobClient = storageAccount.CreateCloudBlobClient();
-            var container = blobClient.GetContainerReference("images");
-            var blob = container.GetBlockBlobReference("site.json");
-            await blob.UploadTextAsync(requestBody).ConfigureAwait(true);
+            var connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
+            var blobServiceClient = new BlobServiceClient(connectionString);
+
+            var container = blobServiceClient.GetBlobContainerClient("images");
+            var blob = container.GetBlobClient("site.json");
+            await blob.UploadAsync(requestBody).ConfigureAwait(true);
         }
     }
 }

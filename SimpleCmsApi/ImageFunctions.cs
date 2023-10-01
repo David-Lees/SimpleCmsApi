@@ -46,9 +46,9 @@ public class ImageFunctions
     public async Task<IActionResult> MoveImage(
         [HttpTrigger(AuthorizationLevel.User, "get", "post", Route = null)] HttpRequest req)
     {
-        var oldParent = req.Query["oldParent"];
-        var newParent = req.Query["newParent"];
-        var id = req.Query["id"];
+        var oldParent = req.Query["oldParent"][0] ?? string.Empty;
+        var newParent = req.Query["newParent"][0] ?? string.Empty;
+        var id = req.Query["id"][0] ?? string.Empty;
         Log.Information($"Move folder {id} from {oldParent} to {newParent}");
         var image = await _m.Send(new GetImageQuery(oldParent, id));
         await _m.Send(new MoveImageCommand(newParent, image));
@@ -60,7 +60,7 @@ public class ImageFunctions
         [HttpTrigger(AuthorizationLevel.User, "get", Route = "folder/{parent}")] HttpRequest req,
         string parent)
     {
-        Log.Information($"{req.Method} images in parent {parent} ");        
+        Log.Information($"{req.Method} images in parent {parent} ");
         return new OkObjectResult((await _m.Send(new GetImagesQuery(parent))).OrderBy(x => x.Description));
     }
 }

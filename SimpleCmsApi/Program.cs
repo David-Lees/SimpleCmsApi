@@ -15,7 +15,7 @@ var host = new HostBuilder()
     .ConfigureAppConfiguration(config => StartupHelper.GetConfigurationBuilder(config))
     .ConfigureServices(services =>
     {
-        services.AddMediatR(typeof(HttpFunctions).Assembly);
+        services.AddMediatR(c => c.RegisterServicesFromAssemblyContaining<FolderFunctions>());
 
         var logger = StartupHelper.GetSerilogConfiguration(config);
         Log.Logger = logger.CreateLogger();

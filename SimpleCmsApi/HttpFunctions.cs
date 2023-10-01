@@ -8,15 +8,20 @@ using Microsoft.Extensions.Logging;
 
 namespace SimpleCmsApi;
 
-public static class HttpFunctions
+public class HttpFunctions
 {
+    private readonly ILogger _logger;
+
+    public HttpFunctions(ILoggerFactory loggerFactory)
+    {
+        _logger = loggerFactory.CreateLogger<HttpFunctions>();
+    }
+
     [FunctionName("GetSasToken")]
-    public static IActionResult GetSasToken(
-        [HttpTrigger(AuthorizationLevel.User, "get", "post", Route = null)] HttpRequest req,
-        ILogger log)
+    public IActionResult GetSasToken([HttpTrigger(AuthorizationLevel.User, "get", "post", Route = null)] HttpRequest req)
     {
         if (req == null) throw new ArgumentNullException(nameof(req));
-        log.LogInformation("Call to get SAS Token");
+        _logger.LogInformation("Call to get SAS Token");
 
         var container = new BlobContainerClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "image-upload");
         var sasBuilder = new BlobSasBuilder
@@ -28,7 +33,7 @@ public static class HttpFunctions
         sasBuilder.SetPermissions(BlobContainerSasPermissions.Read | BlobContainerSasPermissions.Write | BlobContainerSasPermissions.Create | BlobContainerSasPermissions.Add);
 
         Uri sasUri = container.GenerateSasUri(sasBuilder);
-        
+
         return new OkObjectResult(new { token = sasUri });
     }
 }

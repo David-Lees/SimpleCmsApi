@@ -21,12 +21,12 @@ public class ProcessMediaHandler : IRequestHandler<ProcessMediaCommand>
         _config = config;
     }
 
-    public Task<Unit> Handle(ProcessMediaCommand request, CancellationToken cancellationToken)
+    public Task Handle(ProcessMediaCommand request, CancellationToken cancellationToken)
     {
-        if (request.Request == null) throw new ArgumentNullException(nameof(request));        
-        string name = request.Request.Query["filename"];
-        string folder = request.Request.Query["folder"];
-        string description = request.Request.Query["description"];
+        if (request.Request == null) throw new ArgumentNullException(nameof(request));
+        string name = request.Request.Query["filename"][0] ?? string.Empty;
+        string folder = request.Request.Query["folder"][0] ?? string.Empty;
+        string description = request.Request.Query["description"][0] ?? string.Empty;
         if (string.IsNullOrWhiteSpace(name)) throw new ArgumentNullException(nameof(request));
         return ProcessMediaInternalAsync(name, folder, description, cancellationToken);
     }
@@ -83,7 +83,6 @@ public class ProcessMediaHandler : IRequestHandler<ProcessMediaCommand>
         return Unit.Value;
     }
 
-
     private static async Task<GalleryImageDetails> CreatePreviewImageAsync(
        Image image, int? res, string resolution, BlobContainerClient container, Guid id)
     {
@@ -115,4 +114,3 @@ public class ProcessMediaHandler : IRequestHandler<ProcessMediaCommand>
         };
     }
 }
-

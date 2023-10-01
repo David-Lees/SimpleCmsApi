@@ -18,14 +18,12 @@ public class MoveImageHandler : IRequestHandler<MoveImageCommand>
         _m = m;
     }
 
-    public async Task<Unit> Handle(MoveImageCommand request, CancellationToken cancellationToken)
+    public async Task Handle(MoveImageCommand request, CancellationToken cancellationToken)
     {
         await _m.Send(new DeleteImageCommand(request.Item.PartitionKey, request.Item.RowKey), cancellationToken);
         request.Item.PartitionKey = request.NewParent;
 
         var client = new TableClient(_config.GetValue<string>("AzureWebJobsBlobStorage"), "Images");
         await client.UpsertEntityAsync(request.Item, TableUpdateMode.Merge, cancellationToken);
-
-        return Unit.Value;
     }
 }

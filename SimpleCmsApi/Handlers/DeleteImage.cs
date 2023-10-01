@@ -20,7 +20,7 @@ public class DeleteImageHandler : IRequestHandler<DeleteImageCommand>
         _config = config;
     }
 
-    public async Task<Unit> Handle(DeleteImageCommand request, CancellationToken cancellationToken)
+    public async Task Handle(DeleteImageCommand request, CancellationToken cancellationToken)
     {
         var connectionString = _config.GetValue<string>("AzureWebJobsBlobStorage");
         var client = new TableClient(connectionString, "Images");
@@ -39,7 +39,5 @@ public class DeleteImageHandler : IRequestHandler<DeleteImageCommand>
         var uris = new Uri[] { small.Uri, meduium.Uri, large.Uri, raw.Uri };
         Log.Information(JsonSerializer.Serialize(uris));
         await batch.DeleteBlobsAsync(uris, cancellationToken: cancellationToken);
-
-        return Unit.Value;
     }
 }
