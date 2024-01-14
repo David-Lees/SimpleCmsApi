@@ -1,0 +1,4 @@
+﻿[*.cs]
+
+# S3604: Member initializer values should not be redundant
+dotnet_diagnostic.S3604.severity = none
