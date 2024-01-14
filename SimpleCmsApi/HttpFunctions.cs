@@ -2,25 +2,20 @@ using Azure.Storage.Blobs;
 using Azure.Storage.Sas;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Extensions.Http;
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 
 namespace SimpleCmsApi;
 
-public class HttpFunctions
+public class HttpFunctions(ILoggerFactory loggerFactory)
 {
-    private readonly ILogger _logger;
+    private readonly ILogger _logger = loggerFactory.CreateLogger<HttpFunctions>();
 
-    public HttpFunctions(ILoggerFactory loggerFactory)
+    [Function("GetSasToken")]
+    public async Task<HttpResponseData> GetSasToken([HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] HttpRequestData req)
     {
-        _logger = loggerFactory.CreateLogger<HttpFunctions>();
-    }
-
-    [FunctionName("GetSasToken")]
-    public IActionResult GetSasToken([HttpTrigger(AuthorizationLevel.User, "get", "post", Route = null)] HttpRequest req)
-    {
-        if (req == null) throw new ArgumentNullException(nameof(req));
+        ArgumentNullException.ThrowIfNull(req);
         _logger.LogInformation("Call to get SAS Token");
 
         var container = new BlobContainerClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "image-upload");
@@ -34,6 +29,8 @@ public class HttpFunctions
 
         Uri sasUri = container.GenerateSasUri(sasBuilder);
 
-        return new OkObjectResult(new { token = sasUri });
+        var response = req.CreateResponse(System.Net.HttpStatusCode.OK);
+        await response.WriteAsJsonAsync(new { token = sasUri });
+        return response;
     }
 }

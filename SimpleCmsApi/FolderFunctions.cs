@@ -1,8 +1,7 @@
 ﻿using MediatR;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Extensions.Http;
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.Http;
 using Serilog;
 using SimpleCmsApi.Handlers;
 using SimpleCmsApi.Models;
@@ -10,57 +9,61 @@ using System.Text.Json;
 
 namespace SimpleCmsApi;
 
-public class FolderFunctions
+public class FolderFunctions(IMediator m)
 {
-    private readonly IMediator _m;
-
-    public FolderFunctions(IMediator m)
-    {
-        _m = m;
-    }
-
-    [FunctionName("CreateFolder")]
-    public async Task<IActionResult> CreateFolder(
-        [HttpTrigger(AuthorizationLevel.User, "post", Route = "folder")] HttpRequest req)
+    [Function("CreateFolder")]
+    public async Task<HttpResponseData> CreateFolder(
+        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "folder")] HttpRequestData req)
     {
         string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
         var item = JsonSerializer.Deserialize<GalleryFolderRequest>(requestBody);
-        if (item == null) return new NotFoundResult();
+        if (item == null) return req.CreateResponse(System.Net.HttpStatusCode.NotFound);
         Log.Information($"Create folder {item.Name}, id {item.RowKey} in parent {item.PartitionKey} ({requestBody})");
-        await _m.Send(new CreateFolderCommand(new GalleryFolder(item)));
-        return new OkResult();
+        await m.Send(new CreateFolderCommand(new GalleryFolder(item)));
+        return req.CreateResponse(System.Net.HttpStatusCode.OK);
     }
 
-    [FunctionName("DeleteFolder")]
-    public async Task<IActionResult> DeleteFolder(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "folder")] HttpRequest req)
+    [Function("DeleteFolder")]
+    public async Task<HttpResponseData> DeleteFolder(
+        [HttpTrigger(AuthorizationLevel.Function, "delete", Route = "folder")] HttpRequestData req)
     {
         string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
         var item = JsonSerializer.Deserialize<GalleryFolderRequest>(requestBody);
-        if (item == null) return new NotFoundResult();
+        if (item == null) return req.CreateResponse(System.Net.HttpStatusCode.NotFound);
         Log.Information($"Delete folder {item.RowKey} in parent {item.PartitionKey}");
-        await _m.Send(new DeleteFolderCommand(new(item)));
-        return new OkResult();
+        await m.Send(new DeleteFolderCommand(new(item)));
+        return req.CreateResponse(System.Net.HttpStatusCode.OK);
     }
 
-    [FunctionName("MoveFolder")]
-    public async Task<IActionResult> MoveFolder(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "folder/{newParent}")] HttpRequest req,        
+    [Function("MoveFolder")]
+    public async Task<HttpResponseData> MoveFolder(
+        [HttpTrigger(AuthorizationLevel.Function, "put", Route = "folder/{newParent}")] HttpRequestData req,
         string newParent)
     {
         string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
         var item = JsonSerializer.Deserialize<GalleryFolderRequest>(requestBody);
-        if (item == null) return new NotFoundResult();
+        if (item == null) return req.CreateResponse(System.Net.HttpStatusCode.NotFound);
         Log.Information($"Move folder {item.Name} from {item.PartitionKey} to {newParent}");
-        await _m.Send(new MoveFolderCommand(newParent, new(item)));
-        return new OkResult();
+        await m.Send(new MoveFolderCommand(newParent, new(item)));
+        return req.CreateResponse(System.Net.HttpStatusCode.OK);
     }
 
-    [FunctionName("GetFolders")]
-    public async Task<IActionResult> GetFolders(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "folder")] HttpRequest req)
+    [Function("GetFolders")]
+    public async Task<HttpResponseData> GetFolders(
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "folder")] HttpRequestData req)
     {
-        Log.Information($"Get All Folders - {req.Path}");
-        return new OkObjectResult(await _m.Send(new GetFoldersQuery()));
+        try
+        {
+            Log.Information($"Get All Folders {req.Url.Query ?? string.Empty}");
+            var response = req.CreateResponse(System.Net.HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(await m.Send(new GetFoldersQuery()));
+            return response;
+        }
+        catch (Exception ex)
+        {
+            var response = req.CreateResponse(System.Net.HttpStatusCode.BadRequest);
+            await response.WriteAsJsonAsync(ex);
+            return response;
+        }
     }
 }

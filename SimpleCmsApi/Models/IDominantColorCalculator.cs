@@ -1,9 +1,8 @@
-﻿using SixLabors.ImageSharp;
+﻿using SkiaSharp;
 
-namespace SimpleCmsApi.Models
+namespace SimpleCmsApi.Models;
+
+public interface IDominantColorCalculator
 {
-    public interface IDominantColorCalculator
-    {
-        Color CalculateDominantColor(Image bitmap);
-    }
+    SKColor CalculateDominantColor(SKBitmap bitmap);
 }

@@ -8,8 +8,8 @@ namespace SimpleCmsApi.Services
     {
         public static Task UpdateSiteAsync(HttpRequest req, ILogger log)
         {
-            if (req == null) throw new ArgumentNullException(nameof(req));
-            if (log == null) throw new ArgumentNullException(nameof(log));
+            ArgumentNullException.ThrowIfNull(req);
+            ArgumentNullException.ThrowIfNull(log);
             return UpdateSiteInternalAsync(req, log);
         }
 

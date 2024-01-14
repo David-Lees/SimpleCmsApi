@@ -1,9 +1,11 @@
-﻿using Microsoft.Extensions.Hosting;
-using Serilog;
-using SimpleCmsApi.Models;
-using MediatR;
-using SimpleCmsApi;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Identity.Web;
+using Serilog;
+using SimpleCmsApi;
+using SimpleCmsApi.Models;
+using SimpleCmsApi.Services;
 
 var config = StartupHelper.GetConfigurationBuilder().Build();
 Log.Logger = StartupHelper.GetSerilogConfiguration(config).CreateBootstrapLogger();
@@ -12,12 +14,25 @@ Log.Information("Starting Simple CMS API");
 
 var host = new HostBuilder()
     .ConfigureFunctionsWorkerDefaults()
-    .ConfigureAppConfiguration(config => StartupHelper.GetConfigurationBuilder(config))
-    .ConfigureServices(services =>
+    .ConfigureHostConfiguration(config =>
+    {
+        config.AddEnvironmentVariables();
+        config.AddJsonFile("appsettings.json", true, true);
+        config.AddJsonFile("local.settings.json", true, true);
+    })
+    .ConfigureServices((hostContext, services) =>
     {
         services.AddMediatR(c => c.RegisterServicesFromAssemblyContaining<FolderFunctions>());
+        services.AddSingleton(x => hostContext.Configuration);
+        services.AddTransient<IBlobStorageService, BlobStorageService>();
 
-        var logger = StartupHelper.GetSerilogConfiguration(config);
+        services.AddAuthentication(options =>
+        {
+            options.DefaultScheme = Microsoft.Identity.Web.Constants.Bearer;
+            options.DefaultChallengeScheme = Microsoft.Identity.Web.Constants.Bearer;
+        }).AddMicrosoftIdentityWebApi(hostContext.Configuration);
+
+        var logger = StartupHelper.GetSerilogConfiguration(hostContext.Configuration);
         Log.Logger = logger.CreateLogger();
         services.AddLogging(lb => lb.AddSerilog(Log.Logger, true));
     })

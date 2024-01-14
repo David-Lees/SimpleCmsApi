@@ -3,7 +3,7 @@ using Azure.Data.Tables;
 
 namespace SimpleCmsApi.Models
 {
-    public class GalleryImage: ITableEntity
+    public class GalleryImage : ITableEntity
     {
         public GalleryImage(string parentFolderId, string id)
         {
@@ -30,6 +30,8 @@ namespace SimpleCmsApi.Models
         public string RawPath { get; set; } = string.Empty;
         public int RawWidth { get; set; }
         public int RawHeight { get; set; }
+
+        public string OriginalPath { get; set; } = string.Empty;
 
         public string DominantColour { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;

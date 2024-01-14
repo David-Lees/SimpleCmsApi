@@ -1,32 +1,31 @@
 ﻿using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Extensions.Http;
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 
 namespace SimpleCmsApi
 {
     public static class PageFunctions
     {
-
-        [FunctionName("UpdateSite")]
-        public static async Task<IActionResult> UpdateSite(
-            [HttpTrigger(AuthorizationLevel.User, Route = null)] HttpRequest req,
+        [Function("UpdateSite")]
+        public static async Task<HttpResponseData> UpdateSite(
+            [HttpTrigger(AuthorizationLevel.Function, Route = null)] HttpRequestData req,
             ILogger log)
         {
             await UpdateSiteAsync(req, log);
-            return new OkResult();
+            return req.CreateResponse(System.Net.HttpStatusCode.OK);
         }
 
-        private static Task UpdateSiteAsync(HttpRequest req, ILogger log)
+        private static Task UpdateSiteAsync(HttpRequestData req, ILogger log)
         {
-            if (req == null) throw new ArgumentNullException(nameof(req));
-            if (log == null) throw new ArgumentNullException(nameof(log));
+            ArgumentNullException.ThrowIfNull(req);
+            ArgumentNullException.ThrowIfNull(log);
             return UpdateSiteInternalAsync(req, log);
         }
 
-        private static async Task UpdateSiteInternalAsync(HttpRequest req, ILogger log)
+        private static async Task UpdateSiteInternalAsync(HttpRequestData req, ILogger log)
         {
             log.LogInformation("C# HTTP update site trigger function processed a request.");
 

@@ -7,18 +7,13 @@ namespace SimpleCmsApi.Handlers;
 
 public record CreateFolderCommand(GalleryFolder Folder) : IRequest;
 
-public class CreateFolderHandler : IRequestHandler<CreateFolderCommand>
+public class CreateFolderHandler(IConfiguration config) : IRequestHandler<CreateFolderCommand>
 {
-    private readonly IConfiguration _config;
-
-    public CreateFolderHandler(IConfiguration config)
-    {
-        _config = config;
-    }
-
     public async Task Handle(CreateFolderCommand request, CancellationToken cancellationToken)
     {
-        var client = new TableClient(_config.GetValue<string>("AzureWebJobsBlobStorage"), "Folders");
+        request.Folder.PartitionKey = request.Folder.PartitionKey.ToLowerInvariant();
+        request.Folder.RowKey = request.Folder.RowKey.ToLowerInvariant();
+        var client = new TableClient(config.GetValue<string>("AzureWebJobsStorage"), "Folders");
         await client.CreateIfNotExistsAsync(cancellationToken);
         await client.UpsertEntityAsync(request.Folder, TableUpdateMode.Merge, cancellationToken);
     }

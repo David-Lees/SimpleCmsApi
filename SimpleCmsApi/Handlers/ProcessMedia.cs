@@ -1,66 +1,63 @@
 ﻿using Azure.Data.Tables;
 using Azure.Storage.Blobs;
 using MediatR;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Serilog;
 using SimpleCmsApi.Models;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Processing;
+using SimpleCmsApi.Services;
+using SkiaSharp;
+using System.Text.RegularExpressions;
 
 namespace SimpleCmsApi.Handlers;
 
-public record ProcessMediaCommand(HttpRequest Request) : IRequest;
+public record ProcessMediaCommand(FileChunkListDto Chunks) : IRequest;
 
-public class ProcessMediaHandler : IRequestHandler<ProcessMediaCommand>
+public partial class ProcessMediaHandler : IRequestHandler<ProcessMediaCommand>
 {
     private readonly IConfiguration _config;
+    private readonly IBlobStorageService _blobStorage;
 
-    public ProcessMediaHandler(IConfiguration config)
+    public ProcessMediaHandler(IConfiguration config, IBlobStorageService blobStorage)
     {
         _config = config;
+        _blobStorage = blobStorage;
     }
 
-    public Task Handle(ProcessMediaCommand request, CancellationToken cancellationToken)
-    {
-        if (request.Request == null) throw new ArgumentNullException(nameof(request));
-        string name = request.Request.Query["filename"][0] ?? string.Empty;
-        string folder = request.Request.Query["folder"][0] ?? string.Empty;
-        string description = request.Request.Query["description"][0] ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(name)) throw new ArgumentNullException(nameof(request));
-        return ProcessMediaInternalAsync(name, folder, description, cancellationToken);
-    }
+    [GeneratedRegex("[^0-9A-Za-z.,]")]
+    private static partial Regex FilenameRegex();
 
-    private async Task<Unit> ProcessMediaInternalAsync(string name, string folder, string description, CancellationToken cancellationToken)
+    public async Task Handle(ProcessMediaCommand request, CancellationToken cancellationToken)
     {
         Log.Information("C# HTTP process media trigger function processed a request.");
-        var connectionString = _config.GetValue<string>("AzureWebJobsBlobStorage");
+        if (request.Chunks == null) throw new ArgumentNullException(nameof(request));
+
+        // Sanitise filename
+        request.Chunks.Name = FilenameRegex().Replace(request.Chunks.Name, "-");
+        string containerName = "images";
+        var blobName = $"files/{request.Chunks.FileId}/original-{request.Chunks.FileId}{Path.GetExtension(request.Chunks.Name)}";
+        var (container, blob) = await _blobStorage.FinaliseChunkedUploadAsync(containerName, blobName, request.Chunks.BlockIds, cancellationToken);
+
+        var connectionString = _config.GetValue<string>("AzureWebJobsStorage");
 
         var table = new TableClient(connectionString, "Images");
         await table.CreateIfNotExistsAsync(cancellationToken);
 
-        var srcContainer = new BlobContainerClient(connectionString, "image-upload");
-        var container = new BlobContainerClient(connectionString, "images");
-
         // load file
-        var f = srcContainer.GetBlobClient(name);
-        using var stream = new MemoryStream();
-        await f.DownloadToAsync(stream, cancellationToken);
-        stream.Position = 0;
-        using var src = Image.Load(stream);
+        var stream = blob.OpenRead(cancellationToken: cancellationToken);
+        using var src = SKBitmap.Decode(stream);
 
-        var id = Guid.NewGuid();
+        var id = Guid.NewGuid().ToString();
         var hueCalc = new DominantHueColorCalculator(0.5f, 0.5f, 60);
 
-        var small = await CreatePreviewImageAsync(src.Clone(x => x.AutoOrient()), 375, "preview-small", container, id);
-        var medium = await CreatePreviewImageAsync(src.Clone(x => x.AutoOrient()), 768, "preview-medium", container, id);
-        var large = await CreatePreviewImageAsync(src.Clone(x => x.AutoOrient()), 1080, "preview-large", container, id);
-        var raw = await CreatePreviewImageAsync(src.Clone(x => x.AutoOrient()), null, "preview-raw", container, id);
+        var small = await CreatePreviewImageAsync(src, 375, "preview-small", container, id, cancellationToken);
+        var medium = await CreatePreviewImageAsync(src, 768, "preview-medium", container, id, cancellationToken);
+        var large = await CreatePreviewImageAsync(src, 1080, "preview-large", container, id, cancellationToken);
+        var raw = await CreatePreviewImageAsync(src, null, "preview-raw", container, id, cancellationToken);
 
-        var galleryImage = new GalleryImage(folder, id.ToString())
+        var galleryImage = new GalleryImage(request.Chunks.ParentId.ToString(), id.ToString())
         {
-            DominantColour = "#" + hueCalc.CalculateDominantColor(src).ToHex(),
-            Description = description,
+            DominantColour = hueCalc.CalculateDominantColor(src).ToString(),
+            Description = request.Chunks.Description,
             PreviewSmallPath = small.Path,
             PreviewSmallWidth = small.Width,
             PreviewSmallHeight = small.Height,
@@ -72,23 +69,19 @@ public class ProcessMediaHandler : IRequestHandler<ProcessMediaCommand>
             PreviewLargeHeight = large.Height,
             RawPath = raw.Path,
             RawWidth = raw.Width,
-            RawHeight = raw.Height
+            RawHeight = raw.Height,
+            OriginalPath = blobName
         };
 
         await table.UpsertEntityAsync(galleryImage, cancellationToken: cancellationToken);
-
-        // delete original file
-        await f.DeleteAsync(cancellationToken: cancellationToken).ConfigureAwait(true);
-
-        return Unit.Value;
     }
 
-    private static async Task<GalleryImageDetails> CreatePreviewImageAsync(
-       Image image, int? res, string resolution, BlobContainerClient container, Guid id)
+    public static async Task<GalleryImageDetails> CreatePreviewImageAsync(
+       SKBitmap image, int? res, string resolution, BlobContainerClient container, string path, CancellationToken cancellationToken)
     {
         var width = image.Width;
         var height = image.Height;
-        string name = string.Empty;
+        SKBitmap copy;
         if (res != null)
         {
             double ratio = (double)res / image.Height;
@@ -96,15 +89,25 @@ public class ProcessMediaHandler : IRequestHandler<ProcessMediaCommand>
             height = (int)(image.Height * ratio);
             if (ratio < 1.0)
             {
-                image.Mutate(x => x.Resize(width, height));
+                copy = new SKBitmap(width, height);
+                image.ScalePixels(copy, SKFilterQuality.High);
+            }
+            else
+            {
+                copy = image.Copy();
             }
         }
-        name = ("files/" + id.ToString() + "/" + resolution + "-" + id.ToString() + ".jpg").ToLowerInvariant();
+        else
+        {
+            copy = image.Copy();
+        }
+
+        var name = $"files/{path}/{resolution}.jpg".ToLowerInvariant();
 
         using var stream = new MemoryStream();
-        image.SaveAsJpeg(stream, new SixLabors.ImageSharp.Formats.Jpeg.JpegEncoder { Quality = 90 });
+        copy.Encode(stream, SKEncodedImageFormat.Jpeg, 90);
         stream.Position = 0;
-        await container.UploadBlobAsync(name, stream);
+        await container.UploadBlobAsync(name, stream, cancellationToken);
 
         return new GalleryImageDetails
         {

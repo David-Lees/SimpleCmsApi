@@ -11,18 +11,11 @@ namespace SimpleCmsApi.Handlers;
 
 public record DeleteImageCommand(string ParentId, string Id) : IRequest;
 
-public class DeleteImageHandler : IRequestHandler<DeleteImageCommand>
+public class DeleteImageHandler(IConfiguration config) : IRequestHandler<DeleteImageCommand>
 {
-    private readonly IConfiguration _config;
-
-    public DeleteImageHandler(IConfiguration config)
-    {
-        _config = config;
-    }
-
     public async Task Handle(DeleteImageCommand request, CancellationToken cancellationToken)
     {
-        var connectionString = _config.GetValue<string>("AzureWebJobsBlobStorage");
+        var connectionString = config.GetValue<string>("AzureWebJobsStorage");
         var client = new TableClient(connectionString, "Images");
         var image = await client.GetEntityAsync<GalleryImage>(request.ParentId, request.Id, cancellationToken: cancellationToken);
         await client.DeleteEntityAsync(request.ParentId, request.Id, cancellationToken: cancellationToken);

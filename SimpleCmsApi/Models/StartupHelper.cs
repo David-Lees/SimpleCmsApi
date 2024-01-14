@@ -18,17 +18,17 @@ public static class StartupHelper
         return config;
     }
 
-    public static LoggerConfiguration GetSerilogConfiguration(IConfigurationRoot config, LoggerConfiguration? logger = null)
+    public static LoggerConfiguration GetSerilogConfiguration(IConfiguration config, LoggerConfiguration? logger = null)
     {
         logger ??= new LoggerConfiguration();
         logger
            .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
            .Enrich.FromLogContext()
         .WriteTo.Console();
-        
-        var connectionString = config.GetValue<string>("AzureWebJobsBlobStorage");
+
+        var connectionString = config.GetValue<string>("AzureWebJobsStorage");
         if (!string.IsNullOrEmpty(connectionString))
-        {            
+        {
             var cloudAccount = new BlobServiceClient(connectionString);
             logger.WriteTo.AzureBlobStorage(cloudAccount, storageFileName: "{yyyy}-{MM}/Log-{dd}.txt");
         }
