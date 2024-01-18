@@ -5,6 +5,8 @@ using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Configuration;
 using SimpleCmsApi.Models;
 using SkiaSharp;
+using System.Drawing;
+using System.Runtime.InteropServices;
 
 namespace SimpleCmsApi.Handlers;
 
@@ -18,10 +20,12 @@ public class SaveEditHandler(IConfiguration config) : IRequestHandler<SaveEditCo
         var queryString = System.Web.HttpUtility.ParseQueryString(request.Request.Url.Query);
         var rowKey = queryString["rowKey"] ?? string.Empty;
         var partitionKey = queryString["partitionKey"] ?? string.Empty;
-        return SaveEditInternalAsync(rowKey, partitionKey, request.Request, cancellationToken);
+        var width = int.Parse(queryString["width"] ?? "0");
+        var height = int.Parse(queryString["height"] ?? "0");
+        return SaveEditInternalAsync(rowKey, partitionKey, request.Request, width, height, cancellationToken);
     }
 
-    private async Task SaveEditInternalAsync(string rowKey, string partitionKey, HttpRequestData request, CancellationToken cancellationToken)
+    private async Task SaveEditInternalAsync(string rowKey, string partitionKey, HttpRequestData request, int width, int height, CancellationToken cancellationToken)
     {
         var connectionString = config.GetValue<string>("AzureWebJobsStorage");
         var table = new TableClient(connectionString, "Images");
@@ -47,7 +51,24 @@ public class SaveEditHandler(IConfiguration config) : IRequestHandler<SaveEditCo
             await container.UploadBlobAsync(original, stream2, cancellationToken);
         }
 
-        using var src = SKBitmap.Decode(request.Body);
+        using var src = new SKBitmap();
+        var info = new SKImageInfo(width, height, SKColorType.Rgba8888);
+        uint[] pixelValues = new uint[width * height];
+        request.Body.Seek(0, SeekOrigin.Begin);
+        for (int i = 0; i < width * height; i++)
+        {
+            var red = request.Body.ReadByte();
+            var green = request.Body.ReadByte();
+            var blue = request.Body.ReadByte();
+            var alpha = request.Body.ReadByte();
+            uint pixelValue = (uint)red + (uint)(green << 8) + (uint)(blue << 16) + (uint)(alpha << 24);
+            pixelValues[i] = pixelValue;
+        }
+        GCHandle gcHandle = GCHandle.Alloc(pixelValues, GCHandleType.Pinned);
+        IntPtr ptr = gcHandle.AddrOfPinnedObject();
+        int rowBytes = info.RowBytes;
+        src.InstallPixels(info, ptr, rowBytes, delegate { gcHandle.Free(); });
+
         var hueCalc = new DominantHueColorCalculator(0.5f, 0.5f, 60);
 
         var small = await ProcessMediaHandler.CreatePreviewImageAsync(src, 375, "preview-small", container, rowKey, cancellationToken);

@@ -107,7 +107,16 @@ public partial class ProcessMediaHandler : IRequestHandler<ProcessMediaCommand>
         using var stream = new MemoryStream();
         copy.Encode(stream, SKEncodedImageFormat.Jpeg, 90);
         stream.Position = 0;
-        await container.UploadBlobAsync(name, stream, cancellationToken);
+
+        var blob = container.GetBlobClient(name);
+        if (await blob.ExistsAsync(cancellationToken))
+        {
+            await blob.UploadAsync(stream, true, cancellationToken);
+        }
+        else
+        {
+            await container.UploadBlobAsync(name, stream, cancellationToken);
+        }
 
         return new GalleryImageDetails
         {
