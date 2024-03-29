@@ -8,14 +8,9 @@ namespace SimpleCmsApi.Handlers;
 
 public record UploadChunkCommand(Guid Id, FileChunkDto Chunk, HttpRequestData RequestData) : IRequest<HttpResponseData>;
 
-public partial class UploadChunkHandler : IRequestHandler<UploadChunkCommand, HttpResponseData>
+public partial class UploadChunkHandler(IBlobStorageService blobStorageService) : IRequestHandler<UploadChunkCommand, HttpResponseData>
 {
-    private readonly IBlobStorageService _blobStorage;
-
-    public UploadChunkHandler(IBlobStorageService blobStorageService)
-    {
-        _blobStorage = blobStorageService;
-    }
+    private readonly IBlobStorageService _blobStorage = blobStorageService;
 
     public async Task<HttpResponseData> Handle(UploadChunkCommand request, CancellationToken cancellationToken)
     {

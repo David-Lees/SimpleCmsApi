@@ -12,16 +12,10 @@ namespace SimpleCmsApi.Handlers;
 
 public record ProcessMediaCommand(FileChunkListDto Chunks) : IRequest;
 
-public partial class ProcessMediaHandler : IRequestHandler<ProcessMediaCommand>
+public partial class ProcessMediaHandler(IConfiguration config, IBlobStorageService blobStorage) : IRequestHandler<ProcessMediaCommand>
 {
-    private readonly IConfiguration _config;
-    private readonly IBlobStorageService _blobStorage;
-
-    public ProcessMediaHandler(IConfiguration config, IBlobStorageService blobStorage)
-    {
-        _config = config;
-        _blobStorage = blobStorage;
-    }
+    private readonly IConfiguration _config = config;
+    private readonly IBlobStorageService _blobStorage = blobStorage;
 
     [GeneratedRegex("[^0-9A-Za-z.,]")]
     private static partial Regex FilenameRegex();
